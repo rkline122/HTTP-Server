@@ -1,21 +1,9 @@
 /*
-Develop a simple, multithreaded web server in the language of your choice. Your server will be "simple" in that it
-
-  - can ignore most HTTP headers,
-  - needs only to be able to return responses of type 200 OK or 404 Not Found (with any corresponding data), and
-  - need not operate with persistent connections.
-
-For the most part, however, it will be a fully functional web server.
-
-The general process of your web server should go as follows:
-
-  - listen on a specified port
-  - create a connection socket when a browser contacts you
-  - receive an HTTP request through the socket
-  - parse the request to determine which file is being requested
-  - if the file is not available, respond with a 404 error. Otherwise, proceed to the next steps.
-  - create an HTTP response -- the contents of the file preceded by header lines
-  - send the HTTP response over the connection
+Project 1: HTTP Server
+By Ryan Kline
+   ---
+CIS 457 - Data Communications
+Winter 2023
 */
 package main
 
@@ -34,6 +22,13 @@ const (
         SERVER_TYPE = "tcp"
 )
 func main() {
+        /*
+
+        Starts up server using the host, port, and 
+        protocol defined above. Once a client is connected,
+        the processClient() function is ran as a goroutine (multithread)
+
+        */
         fmt.Println("Server Running...")
         server, err := net.Listen(SERVER_TYPE, SERVER_HOST+":"+SERVER_PORT)
 
@@ -51,7 +46,7 @@ func main() {
                         os.Exit(1)
                 }
                 fmt.Println("client connected")
-                go processClient(connection)    // Multi-threading with goroutines
+                go processClient(connection)
         }
 }
 
@@ -59,9 +54,8 @@ func main() {
 func processClient(connection net.Conn) {
         /*
 
-        Processes the request sent from the client
-        and sends an appropriate response based on
-        the validity of their request.
+        Processes the request sent from the client and sends 
+        an appropriate response based on the validity of their request.
 
         */
         buffer := make([]byte, 1024)
@@ -72,7 +66,6 @@ func processClient(connection net.Conn) {
                 return
         }
 
-        // Deconstruct the request to eventually retrieve the desired filepath
         bufferToString := string(buffer[:mLen])
         headers := strings.Split(bufferToString, "\r\n")
         request := strings.Fields(headers[0])
@@ -94,11 +87,23 @@ func processClient(connection net.Conn) {
         }else{
                 content = GetFileContent(filePath)
                 header += "HTTP/1.1 200 OK\r\n"
-                header += "Content-Type: text/html\r\n"
-                header += "Content-Length: " + strconv.Itoa(len(content)) + "\r\n"
-                header += "\r\n"
-        }
 
+                if(strings.HasSuffix(filePath, ".html")){
+                        header += "Content-Type: text/html\r\n"
+                        header += "Content-Length: " + strconv.Itoa(len(content)) + "\r\n"
+                        header += "\r\n"
+                }else if(strings.HasSuffix(filePath, ".jpg")){
+                        header += "Content-Type: image/jpeg\r\n"
+                        header += "Content-Length: " + strconv.Itoa(len(content)) + "\r\n"
+                        header += "\r\n"
+                }else{
+                        content = GetFileContent("content/unsupported.html")
+                        header += "Content-Type: text/html\r\n"
+                        header += "Content-Length: " + strconv.Itoa(len(content)) + "\r\n"
+                        header += "\r\n"
+                }
+                
+        }
         response := header + content
         connection.Write([]byte(response))
         connection.Close()
