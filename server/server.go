@@ -1,9 +1,11 @@
 /*
+
 Project 1: HTTP Server
 By Ryan Kline
    ---
 CIS 457 - Data Communications
 Winter 2023
+
 */
 package main
 
@@ -18,7 +20,7 @@ import (
 )
 const (
         SERVER_HOST = "localhost"
-        SERVER_PORT = "9988"
+        SERVER_PORT = "8000"
         SERVER_TYPE = "tcp"
 )
 func main() {
