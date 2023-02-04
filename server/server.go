@@ -20,6 +20,7 @@ import (
         "encoding/json"
 	"time"
         "io/ioutil"
+        "math/rand"
 )
 const (
         SERVER_HOST = "localhost"
@@ -61,8 +62,6 @@ type Cookie struct {
         History []string
 }
 
-var cookies = make(map[string]Cookie)
-
 func processClient(connection net.Conn) {
         /*
 
@@ -70,54 +69,65 @@ func processClient(connection net.Conn) {
         an appropriate response based on the validity of their request.
 
         */
-        var clientCookie Cookie
-        hasCookie := false
-        buffer := make([]byte, 1024)
-        mLen, err := connection.Read(buffer)
+        var (
+                header string
+                content string
+                historyStr string
+                newConnection bool
+                clientCookie Cookie
+                cookies = make(map[string]Cookie)
+                buffer = make([]byte, 1024) 
+        )
+        rand.Seed(time.Now().UnixNano())
 
+        jsonFile, err := os.Open("cookies.json")
+        if err != nil {
+                fmt.Println(err)
+        }
+        defer jsonFile.Close()
+
+        byteValue, _ := ioutil.ReadAll(jsonFile)
+        json.Unmarshal(byteValue, &cookies)
+
+        messageLen, err := connection.Read(buffer)
         if err != nil {
                 fmt.Println("Error reading:", err.Error())
                 return
         }
 
-        bufferToString := string(buffer[:mLen])
+        bufferToString := string(buffer[:messageLen])
         headers := strings.Split(bufferToString, "\r\n")
         request := strings.Fields(headers[0])
         filePath := strings.TrimLeft(request[1], "/")
-        
         fmt.Println("File Requested: ", filePath)
         
-        var data string
         // Checks for cookie header
         for _, header := range headers {
                 if strings.HasPrefix(header, "Cookie: ") {
-                        data = header[len("Cookie: "):]
+                        data := header[len("Cookie: "):]
                         id:= (strings.Split(data, "="))[1]
                         fmt.Println(id)
-                        hasCookie = true
+                        newConnection = false
                         clientCookie.ID = id
                         break
+                }else{
+                        cookieID := randSeq(5)
+                        clientCookie.ID = cookieID
+                        newConnection = true
                 }
         }
 
-        var (
-                header string
-                content string
-        )
-
-        var historyStr string
         if _, err := os.Stat(filePath); errors.Is(err, os.ErrNotExist) {
                 content = GetFileContent("content/notFound.html")
                 header += "HTTP/1.1 404 Not Found\r\n"
                 header += "Content-Type: text/html\r\n"
-
                 historyStr = fmt.Sprintf("Visited 'notFound.html' at %s", time.Now().Format(time.RFC3339))
         }else{
                 content = GetFileContent(filePath)
                 header += "HTTP/1.1 200 OK\r\n"
                 historyStr = fmt.Sprintf("Visited '%s' at %s", filePath, time.Now().Format(time.RFC3339))
-                
 
+                // Check file type
                 if(strings.HasSuffix(filePath, ".html")){
                         header += "Content-Type: text/html\r\n"
                 }else if(strings.HasSuffix(filePath, ".jpg")){
@@ -128,23 +138,18 @@ func processClient(connection net.Conn) {
                 }
                 
         }
-
-        fmt.Println(cookies[clientCookie.ID].History)
         clientCookie.History = append(cookies[clientCookie.ID].History, historyStr)
-        fmt.Println(clientCookie.History)
-
         cookies[clientCookie.ID] = clientCookie
 
-        if(!hasCookie){
-                cookieID := "a1b2c3"           //TODO: Make this random
-                header += fmt.Sprintf("Set-Cookie: id=%s\r\n", cookieID)
+        if(newConnection){
+                header += fmt.Sprintf("Set-Cookie: id=%s\r\n", clientCookie.ID)
         }
         header += "Content-Length: " + strconv.Itoa(len(content)) + "\r\n" 
         header += "\r\n"
 
-
+        // Write cookie data to JSON
         file, _ := json.MarshalIndent(cookies, "", " ")
-	_ = ioutil.WriteFile("test.json", file, 0644)
+	_ = ioutil.WriteFile("cookies.json", file, 0644)
 
         response := header + content
         connection.Write([]byte(response))
@@ -201,3 +206,14 @@ func readCookiesFromJSONFile() ([]Cookie, error) {
         return cookies, nil
     }
     
+
+
+func randSeq(n int) string {
+        var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+        b := make([]rune, n)
+        for i := range b {
+            b[i] = letters[rand.Intn(len(letters))]
+        }
+        return string(b)
+}

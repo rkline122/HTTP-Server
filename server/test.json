@@ -1,12 +1,3 @@
 {
- "a1b2c3": {
-  "ID": "a1b2c3",
-  "History": [
-   "Visited 'content' at 2023-02-04T13:44:25-05:00",
-   "Visited 'content/images/puppy.jpg' at 2023-02-04T13:44:27-05:00",
-   "Visited 'notFound.html' at 2023-02-04T13:44:34-05:00",
-   "Visited 'notFound.html' at 2023-02-04T13:44:44-05:00",
-   "Visited 'content/' at 2023-02-04T13:44:49-05:00"
-  ]
- }
+ 
 }
