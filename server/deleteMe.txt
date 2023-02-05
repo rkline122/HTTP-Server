@@ -60,6 +60,7 @@ func main() {
 type Cookie struct {
         ID string
         History map[string]string
+
 }
 
 func processClient(connection net.Conn) {
@@ -80,37 +81,36 @@ func processClient(connection net.Conn) {
         )
         rand.Seed(time.Now().UnixNano())
 
-        // Opens JSON file containing cookie data
         jsonFile, err := os.Open("cookies.json")
         if err != nil {
                 fmt.Println(err)
         }
         defer jsonFile.Close()
 
-        // Loads JSON data into cookies map
         byteValue, _ := ioutil.ReadAll(jsonFile)
         json.Unmarshal(byteValue, &cookies)
 
-        // Reads and deconstructs client message
         messageLen, err := connection.Read(buffer)
         if err != nil {
                 fmt.Println("Error reading:", err.Error())
                 return
         }
+
         bufferToString := string(buffer[:messageLen])
         headers := strings.Split(bufferToString, "\r\n")
         request := strings.Fields(headers[0])
         filePath := strings.TrimLeft(request[1], "/")
         fmt.Println("File Requested: ", filePath)
         
-        // Checks for cookie header
         for _, header := range headers {
+                // Checks for cookie header
                 if strings.HasPrefix(header, "Cookie: ") {
-                        data := header[len("Cookie: "):]
-                        id:= (strings.Split(data, "="))[1]
+                        cookieData := header[len("Cookie: "):]
+                        id := (strings.Split(cookieData, "="))[1]
                         newConnection = false
                         clientCookie.ID = id
                         break
+                        
                 }else{
                         cookieID := randSeq(5)
                         clientCookie.ID = cookieID
@@ -118,20 +118,17 @@ func processClient(connection net.Conn) {
                 }
         }
 
-        if(newConnection){
-                clientCookie.History = make(map[string]string) 
-        }else{
+        if(cookies[clientCookie.ID].History != nil){
                 clientCookie.History = cookies[clientCookie.ID].History
+        }else{
+                clientCookie.History = make(map[string]string)
         }
 
-        // Check if requested filepath exists
         if _, err := os.Stat(filePath); errors.Is(err, os.ErrNotExist) {
                 filePath = "content/notFound.html"
                 responseCode = "HTTP/1.1 404 Not Found\r\n"
                 header += "Content-Type: text/html\r\n"
         }else{
-                responseCode = "HTTP/1.1 200 OK\r\n"
-
                 // Check file type
                 if(strings.HasSuffix(filePath, ".html")){
                         header += "Content-Type: text/html\r\n"
@@ -142,21 +139,46 @@ func processClient(connection net.Conn) {
                         header += "Content-Type: text/html\r\n"           
                 }
                 clientCookie.History[filePath] = time.Now().Format("Mon, 02 Jan 2006 15:04:05")
+
+                // Checks history, if page was already visited, add "If-Modified-Since" header
+                lastVisited, err := time.Parse("Mon, 02 Jan 2006 15:04:05", clientCookie.History[filePath])
+
+                if(err != nil){
+                        fmt.Println("Error Parsing last visited date/time")
+                        return
+                }
+
+                fileInfo, err := os.Stat(filePath)
+                if err != nil{
+                        fmt.Println("Error getting file info:", err.Error())
+                        return
+                }
+                lastModified := fileInfo.ModTime() 
+
+                if (!lastModified.After(lastVisited)){
+                        responseCode = "HTTP/1.1 304 Not Modified\r\n"
+                }else{
+                        responseCode = "HTTP/1.1 200 OK\r\n"
+                }
+                header += fmt.Sprintf("Last-Modified: %s\r\n", lastModified.Format(time.RFC1123))
         }
-        content = GetFileContent(filePath)
 
         if(newConnection){
                 header += fmt.Sprintf("Set-Cookie: id=%s\r\n", clientCookie.ID)
         }
+        content = GetFileContent(filePath)
         header += "Content-Length: " + strconv.Itoa(len(content)) + "\r\n" 
         header += "\r\n"
 
-        // Update cookies map and write to JSON file
-        cookies[clientCookie.ID] = clientCookie
-        writeCookieToJSONFile(cookies, "cookies.json")
 
-        // Send response and close connection
+        cookies[clientCookie.ID] = clientCookie
+        // Write cookie data to JSON
+        file, err := json.MarshalIndent(cookies, "", " ")
+	err = ioutil.WriteFile("cookies.json", file, 0644)
+
         response := responseCode + header + content
+
+        // fmt.Println(response)
         connection.Write([]byte(response))
         connection.Close()
 }
@@ -183,15 +205,13 @@ func GetFileContent(fileURL string) string{
 }
 
 
-func writeCookieToJSONFile(cookies map[string]Cookie, fileName string) error {
+func writeCookieToJSONFile(cookies map[string]Cookie) error {
         // Write cookie data to JSON
         file, err := json.MarshalIndent(cookies, "", " ")
-	err = ioutil.WriteFile(fileName, file, 0644)
+	err = ioutil.WriteFile("cookies.json", file, 0644)
 
         return err
 }
-    
-
 
 func randSeq(n int) string {
         var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
